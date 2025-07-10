@@ -1,0 +1,72 @@
+kind: pipeline
+type: ssh
+name: CI-CD-Ubuntu-Build
+
+# A seção 'node' não é mais necessária, pois o runner SSH não usa labels
+# para selecionar o servidor, ele usa a diretiva 'server'.
+node:
+   environment: ssh-build
+   arch: arm64
+
+# Define o alvo do runner SSH
+server:
+  host: build-server-node
+  user: root
+  ssh_key:
+    from_secret: BUILD_SERVER_SSH_KEY
+
+# Define o diretório de trabalho no servidor de build
+workspace:
+  path: /root/builds
+
+# Gatilhos
+trigger:
+  branch: [main]
+  event: [push, tag]
+
+steps:
+  # O Drone já clona o repositório em /root/builds/<seu-repo>
+
+  # Opcional, mas recomendado: Preparar o sonar-scanner
+  # Este step só roda na primeira vez.
+  - name: Preparar Sonar-Scanner
+    commands:
+      # Nosso Dockerfile já instalou 'npm', então podemos usá-lo.
+      - npm install -g sonar-scanner
+      - echo "Sonar-Scanner pronto."
+    # Só executa este step se o executável não existir.
+    when:
+      path:
+        exclude: /usr/local/bin/sonar-scanner
+
+  # 1. Instalar Dependências
+  - name: Instalar Dependências
+    commands:
+      # O Node/NPM já estão instalados na nossa imagem de build.
+      - npm ci
+
+  # 2. Lint e Testes
+  - name: Lint e Testes
+    commands:
+      - npm run lint
+      - npm test -- --coverage
+
+  # 3. Análise SonarQube
+  - name: Análise SonarQube
+    environment:
+      SONAR_HOST_URL:
+        from_secret: SONAR_HOST_URL
+      SONAR_TOKEN:
+        from_secret: SONAR_TOKEN
+      # Adiciona o diretório de binários globais do npm ao PATH
+      # O caminho pode variar, mas este é o padrão.
+      #PATH: /usr/local/lib/node_modules/sonar-scanner/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+    commands:
+      # O sonar-scanner agora está no PATH e pode ser chamado diretamente
+      - sonar-scanner
+
+  # 4. Build do Projeto
+  - name: Build do Projeto
+    commands:
+      - npm run build
+      - echo "Build concluído!"
