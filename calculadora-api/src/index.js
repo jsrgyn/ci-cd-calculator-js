@@ -19,4 +19,10 @@ if (!module.parent) {
   });
 }
 
+// Exemplo de código ruim:
+function nomeMuitoCurto() { console.log("Olá") } // Não segue padrão de nomenclatura
+var teste = 123 // Uso de var ao invés de let/const (trigger para Sonar)
+
 module.exports = app; // Exportamos para usar nos testes
+
+

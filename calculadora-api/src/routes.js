@@ -3,21 +3,13 @@ const calculator = require('./calculator');
 
 const router = express.Router();
 
-// Middleware para garantir que os inputs são números
+// ... (validateNumbers middleware continua o mesmo) ...
 const validateNumbers = (req, res, next) => {
-  const { a, b } = req.query;
-  const numA = parseFloat(a);
-  const numB = parseFloat(b);
-
-  if (Number.isNaN(numA) || (b !== undefined && Number.isNaN(numB))) {
-    return res.status(400).json({ error: 'Parâmetros inválidos. Por favor, forneça apenas números.' });
-  }
-
-  req.numA = numA;
-  req.numB = numB;
-  return next();
+    // ...
 };
 
+// Vamos remover a função handleCalculation por enquanto
+/*
 const handleCalculation = (operation) => (req, res) => {
   try {
     const { numA, numB } = req;
@@ -27,12 +19,33 @@ const handleCalculation = (operation) => (req, res) => {
     res.status(400).json({ error: error.message });
   }
 };
+*/
 
-router.get('/sum', validateNumbers, handleCalculation(calculator.sum));
-router.get('/subtract', validateNumbers, handleCalculation(calculator.subtract));
-router.get('/multiply', validateNumbers, handleCalculation(calculator.multiply));
-router.get('/divide', validateNumbers, handleCalculation(calculator.divide));
-router.get('/percentage', validateNumbers, handleCalculation(calculator.percentage));
-router.get('/sqrt', validateNumbers, handleCalculation(calculator.squareRoot));
+// ROTA COM LÓGICA COPIADA
+router.get('/sum', validateNumbers, (req, res) => {
+  try {
+    const { numA, numB } = req;
+    const result = calculator.sum(numA, numB);
+    res.status(200).json({ result });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// ROTA COM A MESMA LÓGICA COPIADA NOVAMENTE (CÓDIGO DUPLICADO!)
+router.get('/subtract', validateNumbers, (req, res) => {
+  try {
+    var { numA, numB } = req; 
+    const { numA, numB } = req;
+    const result = calculator.subtract(numA, numB);
+    res.status(200).json({ result });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Mantemos as outras rotas como estavam para o exemplo
+router.get('/multiply', validateNumbers, (req, res) => { /* ... sua implementação original com handleCalculation aqui ... */ });
+// ... e as outras
 
 module.exports = router;
