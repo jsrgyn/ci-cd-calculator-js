@@ -1,0 +1,115 @@
+kind: pipeline
+type: ssh
+name: CI-CD-Calculadora-SSH
+
+# A seção 'node' não é mais necessária, pois o runner SSH não usa labels
+# para selecionar o servidor, ele usa a diretiva 'server'..
+node:
+   environment: ssh-build
+   arch: arm64
+
+server:
+  host: build-server-node
+  user: root
+  ssh_key:
+    from_secret: BUILD_SERVER_SSH_KEY
+
+workspace:
+  path: /home/ubuntu/builds
+
+trigger:
+  branch: [main]
+  event:
+    - push
+    - pull_request
+    - tag
+
+steps:
+- name: Instalar Dependencias
+  commands:
+    - set -e
+    - npm ci
+    
+- name: Preparar pastas
+  commands:
+    - set -e
+    - mkdir -p reports coverage
+
+- name: Gerar ESLint JSON
+  commands:
+    - set -e
+    - npm run lint:report
+
+#- name: Lint
+#  commands:
+#    - npm run lint
+
+- name: Testes com cobertura
+  commands:
+    - set -e
+    - npm test -- --coverage
+
+- name: Analise SonarQube
+  environment:
+    SONAR_TOKEN:
+      from_secret: SONAR_TOKEN
+    SONAR_HOST_URL:
+      from_secret: SONAR_HOST_URL
+  commands:
+    - set -e
+    - npx sonar-scanner -Dsonar.token=$SONAR_TOKEN -Dsonar.host.url=$SONAR_HOST_URL
+
+- name: Validar Quality Gate
+  environment:
+    SONAR_TOKEN:
+      from_secret: SONAR_TOKEN
+    SONAR_HOST_URL:
+      from_secret: SONAR_HOST_URL
+  commands:
+    - set -e
+    - |
+      echo "Aguardando processamento da análise no SonarQube..."
+      sleep 10
+
+      # Obtém o último task.id da análise finalizada
+      taskId=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/project_analyses/search?project=calculadora-api" | jq -r '.current.component.analysisId')
+      echo "Último taskId: $taskId"
+
+      status=""
+      tentativas=0
+      while [ "$status" != "SUCCESS" ] && [ $tentativas -lt 10 ]; do
+        sleep 5
+        status=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/ce/task?id=$taskId" | jq -r '.task.status')
+        echo "Status: $status"
+        tentativas=$((tentativas+1))
+      done
+
+      qualityStatus=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/qualitygates/project_status?projectKey=calculadora-api" | jq -r '.projectStatus.status')
+      echo "Resultado do Quality Gate: $qualityStatus"
+
+      if [ "$qualityStatus" != "OK" ]; then
+        echo "❌ Quality Gate falhou. Bloqueando deploy."
+        exit 1
+      else
+        echo "✅ Quality Gate aprovado. Continuando pipeline."
+      fi
+
+- name: Deploy Homologacao
+  trigger:
+    event:
+      - pull_request
+  command:
+    - set -e
+    - pm2 stop calculadora-api-homolog || true
+    - pm2 delete calculadora-api-homolog || true
+    - pm2 start src/index.js --name calculadora-api-homolog
+
+- name: Deploy Producao
+  trigger:
+    event:
+      - tag
+  commands:
+    - set -e
+    - pm2 stop calculadora-api-prod || true
+    - pm2 delete calculadora-api-prod || true
+    - pm2 start src/index.js --name calculadora-api-prod

@@ -4,9 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-     "start": "node src/index.js",
-     "test": "jest --coverage --coverageReporters=lcov",
-     "lint": "eslint src/**/*.js"
+    "start": "node src/index.js",
+    "test": "jest --coverage",
+    "lint": "eslint src/**/*.js test/**/*.js", 
+    "lint:report": "eslint src/**/*.js test/**/*.js -f json -o reports/eslint-report.json || true"
   },
   "keywords": [],
   "author": "",

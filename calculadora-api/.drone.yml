@@ -1,72 +1,117 @@
 kind: pipeline
 type: ssh
-name: CI-CD-Ubuntu-Build
+name: CI + push + Deploy Homologação
 
 # A seção 'node' não é mais necessária, pois o runner SSH não usa labels
-# para selecionar o servidor, ele usa a diretiva 'server'.
+# para selecionar o servidor, ele usa a diretiva 'server'..
 node:
    environment: ssh-build
    arch: arm64
 
-# Define o alvo do runner SSH
+trigger:
+  event:
+    - push
+    - pull_request
+    - tag
+
+# mesma config de server.
 server:
   host: build-server-node
   user: root
   ssh_key:
     from_secret: BUILD_SERVER_SSH_KEY
 
-# Define o diretório de trabalho no servidor de build
-workspace:
-  path: /root/builds
-
-# Gatilhos
-trigger:
-  branch: [main]
-  event: [push, tag]
-
 steps:
-  # O Drone já clona o repositório em /root/builds/<seu-repo>
-
-  # Opcional, mas recomendado: Preparar o sonar-scanner
-  # Este step só roda na primeira vez.
-  - name: Preparar Sonar-Scanner
+  # ...mesmos steps de setup, lint, testes, sonar...
+  - name: Setup do Projeto
     commands:
-      # Nosso Dockerfile já instalou 'npm', então podemos usá-lo.
-      - npm install -g sonar-scanner
-      - echo "Sonar-Scanner pronto."
-    # Só executa este step se o executável não existir.
-    when:
-      path:
-        exclude: /usr/local/bin/sonar-scanner
-
-  # 1. Instalar Dependências
-  - name: Instalar Dependências
-    commands:
-      # O Node/NPM já estão instalados na nossa imagem de build.
       - npm ci
+      - mkdir -p reports coverage
 
-  # 2. Lint e Testes
-  - name: Lint e Testes
+  - name: Verificação de Lint
     commands:
-      - npm run lint
+      - npm run lint:report
+
+  - name: Testes Unitários com Cobertura
+    commands:
       - npm test -- --coverage
 
-  # 3. Análise SonarQube
-  - name: Análise SonarQube
+  - name: Análise e Validação do SonarQube
     environment:
-      SONAR_HOST_URL:
-        from_secret: SONAR_HOST_URL
       SONAR_TOKEN:
         from_secret: SONAR_TOKEN
-      # Adiciona o diretório de binários globais do npm ao PATH
-      # O caminho pode variar, mas este é o padrão.
-      #PATH: /usr/local/lib/node_modules/sonar-scanner/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+      SONAR_HOST_URL:
+        from_secret: SONAR_HOST_URL
     commands:
-      # O sonar-scanner agora está no PATH e pode ser chamado diretamente
-      - sonar-scanner
+      - set -e
+      - npx sonar-scanner -Dsonar.token=$SONAR_TOKEN -Dsonar.host.url=$SONAR_HOST_URL
+    when:
+      event:
+        - push
+        - pull_request
+        - tag
 
-  # 4. Build do Projeto
-  - name: Build do Projeto
+  - name: Validar Quality Gate
+    environment:
+      SONAR_TOKEN:
+        from_secret: SONAR_TOKEN
+      SONAR_HOST_URL:
+        from_secret: SONAR_HOST_URL
     commands:
-      - npm run build
-      - echo "Build concluído!"
+      - set -e
+      - |
+        echo "Aguardando processamento da análise no SonarQube..."
+        sleep 10
+        taskId=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/project_analyses/search?project=calculadora-api" | jq -r '.current.component.analysisId')
+        echo "Último taskId: $taskId"
+        status=""
+        tentativas=0
+        while [ "$status" != "SUCCESS" ] && [ $tentativas -lt 10 ]; do
+          sleep 5
+          status=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/ce/task?id=$taskId" | jq -r '.task.status')
+          echo "Status: $status"
+          tentativas=$((tentativas+1))
+        done
+        qualityStatus=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/qualitygates/project_status?projectKey=calculadora-api" | jq -r '.projectStatus.status')
+        echo "Resultado do Quality Gate: $qualityStatus"
+        if [ "$qualityStatus" != "OK" ]; then
+          echo "❌ Quality Gate falhou. Bloqueando deploy."
+          exit 1
+        else
+          echo "✅ Quality Gate aprovado. Continuando pipeline."
+        fi
+    when:
+      event:
+        - push
+        - pull_request
+        - tag
+
+  # Deploy em Homologação
+  - name: Deploy em Homologação
+    commands:
+      - set -e
+      - echo ">>> Iniciando deploy para o ambiente de HOMOLOGAÇÃO..."
+      - pm2 stop calculadora-api-homolog || true
+      - pm2 delete calculadora-api-homolog || true
+      - pm2 start src/index.js --name calculadora-api-homolog
+      - echo ">>> Deploy em Homologação concluído."
+    when:
+      event:
+        - push
+      branch:
+        - main
+
+
+  # --- ETAPA 4: DEPLOY EM PRODUÇÃO (Condicional) ---
+  # CONDIÇÃO DE SEGURANÇA: Somente quando um evento de TAG é criado
+  - name: Deploy em Produção
+    commands:
+      - set -e
+      - echo "🚀🚀🚀 INICIANDO DEPLOY PARA O AMBIENTE DE PRODUÇÃO 🚀🚀🚀"
+      - pm2 stop calculadora-api-prod || true
+      - pm2 delete calculadora-api-prod || true
+      - pm2 start src/index.js --name calculadora-api-prod
+      - echo "✅ Deploy em Produção concluído com sucesso."
+    when:
+      event:
+        - tag

@@ -1,0 +1,87 @@
+kind: pipeline
+type: ssh
+name: CI-CD-Calculadora-SSH
+
+# A seção 'node' não é mais necessária, pois o runner SSH não usa labels
+# para selecionar o servidor, ele usa a diretiva 'server'.
+node:
+   environment: ssh-build
+   arch: arm64
+
+# Define o alvo do runner SSH
+server:
+  host: build-server-node
+  user: root
+  ssh_key:
+    from_secret: BUILD_SERVER_SSH_KEY
+
+# Define o diretório de trabalho no servidor de build
+workspace:
+  path: /home/ubuntu/builds # Use um caminho em um diretório de usuário, não /root
+
+# Gatilhos
+trigger:
+  branch: [main]
+  event: [push, tag]
+
+steps:
+# O Drone já executa o 'clone' automaticamente neste ponto.
+
+# 1. Instalar Dependências
+- name: Instalar Dependencias
+  commands:
+    # 'npm ci' é melhor para CI, pois usa o package-lock.json e é mais rápido.
+    # Garanta que Node.js e npm estejam instalados no seu servidor SSH.
+    - npm ci
+
+# 2. Lint
+#- name: Lint
+#  commands:
+#    - npm run lint
+
+# 3. Testes e Cobertura
+#- name: Testes
+#  commands:
+#    - npm install
+#    - npm test
+#- name: Testes
+#  commands:
+#    - npm test -- --coverage # O segundo '--' passa o argumento para o Jest
+
+# 4. Análise SonarQube
+- name: Analise SonarQube
+  environment:
+    SONAR_TOKEN:
+      from_secret: SONAR_TOKEN
+    SONAR_HOST_URL:
+      from_secret: SONAR_HOST_URL
+  commands:
+    - npx sonar-scanner -Dsonar.token=$SONAR_TOKEN -Dsonar.host.url=$SONAR_HOST_URL
+#- name: Analise SonarQube
+#  environment:
+#    SONAR_HOST_URL:
+#      from_secret: SONAR_HOST_URL
+#    SONAR_TOKEN:
+#      from_secret: SONAR_TOKEN
+#  commands:
+#    - npx sonar-scanner -Dsonar.projectKey=calculadora -Dsonar.sources=. -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_TOKEN
+
+# 5. Deploy em Homologação
+- name: Deploy Homologação
+  commands:
+    # Garanta que 'pm2' esteja instalado no servidor SSH (npm install -g pm2)
+    # Parar e deletar a instância antiga para garantir um reinício limpo.
+    - pm2 stop calculadora-api-homolog || true
+    - pm2 delete calculadora-api-homolog || true
+    # Iniciar a nova instância. O PM2 a manterá rodando.
+    - pm2 start src/index.js --name calculadora-api-homolog
+
+# 6. Deploy em Produção (exemplo com tag)
+- name: Deploy Producao
+  trigger:
+    event:
+      - tag
+  commands:
+    - pm2 stop calculadora-api-prod || true
+    - pm2 delete calculadora-api-prod || true
+    - pm2 start src/index.js --name calculadora-api-prod

@@ -1,0 +1,4 @@
+{
+    "sonarQubeUri": "http://sonar.local",
+    "projectKey": "calculadora-api"
+}
