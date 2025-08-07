@@ -1,4 +1,7 @@
 {
-    "sonarQubeUri": "http://sonar.local",
-    "projectKey": "calculadora-api"
+  "projectKey": "calculadora-api",
+  "serverId": "sonar-local",
+  "analyzerProperties": {
+    "sonar.javascript.node": "16.0.0"
+  }
 }
