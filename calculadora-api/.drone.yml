@@ -60,7 +60,7 @@ steps:
     commands:
       - set -e
       - |
-        echo "Aguardando processamento da análise no SonarQube...."
+        echo "Aguardando processamento da análise no SonarQube..."
         sleep 10
         taskId=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/project_analyses/search?project=calculadora-api" | jq -r '.current.component.analysisId')
         echo "Último taskId: $taskId"
@@ -90,7 +90,7 @@ steps:
   - name: Deploy em Homologação
     commands:
       - set -e
-      - echo ">>> Iniciando deploy para o ambiente de HOMOLOGAÇÃO...."
+      - echo ">>> Iniciando deploy para o ambiente de HOMOLOGAÇÃO..."
       - pm2 stop calculadora-api-homolog || true
       - pm2 delete calculadora-api-homolog || true
       - pm2 start src/index.js --name calculadora-api-homolog
