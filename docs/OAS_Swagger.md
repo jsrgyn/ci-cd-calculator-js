@@ -1,4 +1,4 @@
-# QA Test Plan - Integração Swagger no Pipeline CI/CD
+# OAS - Integração Swagger no Pipeline CI/CD
 
 ## Objetivo
 Garantir a validação automática da documentação Swagger/OpenAPI durante o processo de CI/CD, assegurando consistência entre a documentação e a implementação da API.
