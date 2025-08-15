@@ -1,0 +1,8 @@
+# .trivyignore
+# Ignorar CVE específico em todas as verificações
+CVE-2023-12345
+
+# Ignorar vulnerabilidade em pacote específico
+# type:os # uncomment para vulnerabilidades do sistema operacional
+# pkg:deb:ubuntu:linux-libc-dev
+# vulnerability: CVE-2024-56789

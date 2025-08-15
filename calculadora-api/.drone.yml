@@ -86,20 +86,61 @@ steps:
         - pull_request
         - tag
 
+  # Nova etapa: Security Scan
+  - name: Security Scan
+    commands:
+      - |
+        # Executa o scan do código fonte e dependências
+        trivy fs --severity HIGH,CRITICAL --exit-code 1 --no-progress . > trivy-report.txt
+        
+        # Verifica se encontrou vulnerabilidades
+        if [ $? -ne 0 ]; then
+          echo "##############################################################"
+          echo "#               VULNERABILIDADES CRÍTICAS ENCONTRADAS        #"
+          echo "#   Pipeline abortado por questões de segurança!             #"
+          echo "##############################################################"
+          echo "Relatório completo:"
+          cat trivy-report.txt
+          exit 1
+        else
+          echo "✅ Scan de segurança aprovado. Nenhuma vulnerabilidade crítica encontrada."
+        fi
+    when:
+      event: [push, tag]
+
   # Deploy em Homologação
   - name: Deploy em Homologação
     commands:
-      - set -e
-      - echo ">>> Iniciando deploy para o ambiente de HOMOLOGAÇÃO...."
-      - pm2 stop calculadora-api-homolog || true
-      - pm2 delete calculadora-api-homolog || true
-      - pm2 start src/index.js --name calculadora-api-homolog
-      - echo ">>> Deploy em Homologação concluído."
+       - set -e
+       - echo ">>> Verificando segurança antes do deploy..."
+      
+       # Executa o scan novamente para garantir
+       - trivy fs --severity HIGH,CRITICAL --exit-code 1 --no-progress .
+      
+       - echo ">>> Iniciando deploy para HOMOLOGAÇÃO..."
+       - pm2 stop calculadora-api-homolog || true
+       - pm2 delete calculadora-api-homolog || true
+       - pm2 start src/index.js --name calculadora-api-homolog
+      
+       # Gera relatório final
+       - trivy fs --format json -o reports/trivy-homolog-report.json .
+       - echo ">>> Deploy em Homologação concluído."
+    depends_on:
+      - Security Scan
     when:
       event:
         - push
       branch:
         - main
+
+  - name: Build Metrics
+    commands:
+      - apk add curl
+      - |
+        curl -X POST http://prometheus:9090/api/v1/import/prometheus \
+          -d "drone_build_duration_seconds{repo=\"${DRONE_REPO}\", status=\"success\"} $(($(date +%s) - ${DRONE_BUILD_STARTED}))"
+    when:
+      status: [success, failure]
 
 
   # --- ETAPA 4: DEPLOY EM PRODUÇÃO (Condicional). ---
@@ -107,11 +148,21 @@ steps:
   - name: Deploy em Produção
     commands:
       - set -e
-      - echo "🚀🚀🚀 INICIANDO DEPLOY PARA O AMBIENTE DE PRODUÇÃO 🚀🚀🚀"
+      - echo "🚀 Verificando segurança antes do deploy em PRODUÇÃO..."
+      
+      # Scan adicional com regras mais rigorosas
+      - trivy fs --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed .
+      
+      - echo "🚀🚀🚀 INICIANDO DEPLOY PARA PRODUÇÃO 🚀🚀🚀"
       - pm2 stop calculadora-api-prod || true
       - pm2 delete calculadora-api-prod || true
       - pm2 start src/index.js --name calculadora-api-prod
+      
+      # Gera relatório detalhado
+      - trivy fs --format template --template "@contrib/html.tpl" -o reports/trivy-prod-report.html .
       - echo "✅ Deploy em Produção concluído com sucesso."
+    depends_on:
+      - Security Scan
     when:
       event:
         - tag
