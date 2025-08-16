@@ -126,6 +126,21 @@ steps:
         fi
     when:
       event: [push, pull_request, tag]
+    
+  - name: E2E Tests (Staging)
+    commands:
+      - cd tests/e2e
+      - npm install cypress mochawesome mochawesome-merge mochawesome-report-generator --save-dev
+      - mkdir -p results
+      - npx cypress run --config baseUrl=${CYPRESS_BASE_URL} --reporter mochawesome --reporter-options "reportDir=results,overwrite=false,html=false,json=true"
+      - npx mochawesome-merge "results/*.json" > results/combined.json
+      - npx marge results/combined.json -o results --reportTitle "Cypress Test Report"
+      - cp -r results /usr/share/nginx/html/reports/e2e/
+    environment:
+      CYPRESS_BASE_URL: ${CYPRESS_BASE_URL}
+    when:
+      event: [push]
+      branch: [main]
 
   # Deploy em Homologação
   - name: Deploy em Homologação

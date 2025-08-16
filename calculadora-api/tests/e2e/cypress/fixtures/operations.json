@@ -1,0 +1,9 @@
+{
+  "validOperations": [
+    {"name": "Soma", "path": "/sum", "a": 5, "b": 3, "expected": 8},
+    {"name": "Subtração", "path": "/subtract", "a": 10, "b": 4, "expected": 6}
+  ],
+  "invalidOperations": [
+    {"path": "/divide", "params": "a=10&b=0", "expectedError": "Não é possível dividir por zero."}
+  ]
+}
