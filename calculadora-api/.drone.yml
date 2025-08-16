@@ -108,6 +108,25 @@ steps:
     when:
       event: [push, tag]
 
+  - name: OWASP Dependency Check
+    commands:
+      - mkdir -p reports/dependency-check
+      - dependency-check --project "calculadora-api" --scan . --format HTML --format JSON --out reports/dependency-check
+      - |
+        # Verificar se há vulnerabilidades de alta severidade
+        HIGH_VULNS=$(jq '.dependencies[].vulnerabilities[].severity' reports/dependency-check/dependency-check-report.json | grep -c '"HIGH"\|"CRITICAL"')
+        if [ "$HIGH_VULNS" -gt 0 ]; then
+          echo "########################################################"
+          echo "# VULNERABILIDADES CRÍTICAS ENCONTRADAS: $HIGH_VULNS      #"
+          echo "#   Pipeline abortado por questões de segurança        #"
+          echo "########################################################"
+          exit 1
+        else
+          echo "✅ Nenhuma vulnerabilidade crítica encontrada nas dependências"
+        fi
+    when:
+      event: [push, pull_request, tag]
+
   # Deploy em Homologação
   - name: Deploy em Homologação
     commands:
@@ -124,6 +143,8 @@ steps:
       
        # Gera relatório final
        - trivy fs --format json -o reports/trivy-homolog-report.json .
+       # Copiar relatório para pasta acessível
+       - cp reports/dependency-check/dependency-check-report.html /usr/share/nginx/html/reports/
        - echo ">>> Deploy em Homologação concluído."
     depends_on:
       - Security Scan
@@ -141,6 +162,13 @@ steps:
           -d "drone_build_duration_seconds{repo=\"${DRONE_REPO}\", status=\"success\"} $(($(date +%s) - ${DRONE_BUILD_STARTED}))"
     when:
       status: [success, failure]
+  
+  # Adicionar etapa para expor relatórios
+  - name: Publish Security Reports
+    commands:
+      - echo "Relatórios de segurança disponíveis em http://dashboard.local/reports/"
+    when:
+      status: [success]
 
 
   # --- ETAPA 4: DEPLOY EM PRODUÇÃO (Condicional). ---
