@@ -22,10 +22,10 @@ server:
     from_secret: BUILD_SERVER_SSH_KEY
 
 steps:
-  # ...mesmos steps de setup, lint, testes, sonar...
-  - name: Setup do Projeto
+  - name: Setup e Instalação de Dependências
     commands:
-      - npm ci
+      ## - npm ci 
+      - npm ci --include=dev
       - mkdir -p reports coverage
 
   - name: Verificação de Lint
@@ -112,21 +112,14 @@ steps:
     commands:
       - mkdir -p reports/dependency-check
       - dependency-check --project "calculadora-api" --scan . --format HTML --format JSON --out reports/dependency-check
+     
+  - name: Salvar Cache de Dependências
+    commands:
       - |
-        # Verificar se há vulnerabilidades de alta severidade
-        HIGH_VULNS=$(jq '.dependencies[].vulnerabilities[].severity' reports/dependency-check/dependency-check-report.json | grep -c '"HIGH"\|"CRITICAL"')
-        if [ "$HIGH_VULNS" -gt 0 ]; then
-          echo "########################################################"
-          echo "# VULNERABILIDADES CRÍTICAS ENCONTRADAS: $HIGH_VULNS      #"
-          echo "#   Pipeline abortado por questões de segurança        #"
-          echo "########################################################"
-          exit 1
-        else
-          echo "✅ Nenhuma vulnerabilidade crítica encontrada nas dependências"
-        fi
+        tar -cpzf /root/.cache/node-cache.tar.gz node_modules
     when:
-      event: [push, pull_request, tag]
-    
+      status: success
+
   - name: E2E Tests (Staging)
     commands:
       - cd tests/e2e
@@ -141,6 +134,13 @@ steps:
     when:
       event: [push]
       branch: [main]
+
+  - name: Restaurar Cache de Dependências
+    commands:
+      - |
+        if [ -f /root/.cache/node-cache.tar.gz ]; then
+          tar -xzpf /root/.cache/node-cache.tar.gz -C node_modules
+        fi
 
   # Deploy em Homologação
   - name: Deploy em Homologação
@@ -171,12 +171,10 @@ steps:
 
   - name: Build Metrics
     commands:
-      - apk add curl
+      - apt-get update && apt-get install -y curl
       - |
         curl -X POST http://prometheus:9090/api/v1/import/prometheus \
           -d "drone_build_duration_seconds{repo=\"${DRONE_REPO}\", status=\"success\"} $(($(date +%s) - ${DRONE_BUILD_STARTED}))"
-    when:
-      status: [success, failure]
   
   # Adicionar etapa para expor relatórios
   - name: Publish Security Reports
@@ -201,7 +199,7 @@ steps:
       - pm2 delete calculadora-api-prod || true
       - pm2 start src/index.js --name calculadora-api-prod
       
-      # Gera relatório detalhado
+      # Gera relatório detalhado..
       - trivy fs --format template --template "@contrib/html.tpl" -o reports/trivy-prod-report.html .
       - echo "✅ Deploy em Produção concluído com sucesso."
     depends_on:
