@@ -6,8 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "test": "jest --coverage",
-    "lint": "eslint src/**/*.js test/**/*.js",
-    "lint:report": "eslint src/**/*.js test/**/*.js -f json -o reports/eslint-report.json || true",
+    "lint": "npx eslint --ext .js,.jsx,.ts,.tsx src",
+    "lint:report": "npx eslint --ext .js,.jsx,.ts,.tsx src --format html -o reports/eslint-report.html",
     "test:e2e": "cypress open",
     "test:e2e:ci": "cypress run"
   },
@@ -24,6 +24,6 @@
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-plugin-import": "^2.32.0",
     "jest": "^30.0.3",
-    "supertest": "^7.1.1"
+    "supertest": "^7.1.4"
   }
 }

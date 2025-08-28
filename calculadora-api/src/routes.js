@@ -15,7 +15,7 @@ const validateNumbers = (req, res, next) => {
 
   req.numA = numA;
   req.numB = numB;
-  next();
+  return next();
 };
 
 const handleCalculation = (operation) => (req, res) => {
